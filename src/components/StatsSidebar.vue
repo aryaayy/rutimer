@@ -18,9 +18,9 @@ const props = defineProps<{
 const emit = defineEmits<{
   (e: 'update:activeSessionId', id: string): void
   (e: 'update-cube-type', type: string): void
-  (e: 'update-comment', payload: { id: number, comment: string }): void
-  (e: 'update-penalty', payload: { id: number, penalty: Penalty }): void
-  (e: 'delete-solve', id: number): void
+  (e: 'update-comment', payload: { id: string, comment: string }): void
+  (e: 'update-penalty', payload: { id: string, penalty: Penalty }): void
+  (e: 'delete-solve', id: string): void
   (e: 'create-session'): void
   (e: 'rename-session', payload: { id: string, name: string }): void
 }>()
@@ -160,6 +160,7 @@ const formatDate = (timestamp: number) => new Date(timestamp).toLocaleString()
           v-model="editSessionName" 
           @keyup.enter="saveRename"
           class="ui-input grow" 
+          maxlength="80"
           autofocus
         />
         <button class="icon-btn" @click="saveRename">✓</button>
@@ -260,7 +261,7 @@ const formatDate = (timestamp: number) => new Date(timestamp).toLocaleString()
             
             <div class="detail-row">
                 <span class="detail-label">Date:</span>
-                <span>{{ formatDate(selectedSolve.id) }}</span>
+                <span>{{ formatDate(selectedSolve.createdAt) }}</span>
             </div>
             
             <div class="detail-row">
@@ -295,7 +296,7 @@ const formatDate = (timestamp: number) => new Date(timestamp).toLocaleString()
 
             <div class="detail-row">
                 <label class="detail-label" for="comment-input">Comment:</label>
-                <textarea id="comment-input" v-model="draftComment" rows="3" class="ui-input"></textarea>
+                <textarea id="comment-input" v-model="draftComment" rows="3" maxlength="2000" class="ui-input"></textarea>
             </div>
 
             <div class="dialog-actions">

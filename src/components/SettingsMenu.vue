@@ -126,7 +126,7 @@ onUnmounted(() => document.removeEventListener('click', handleOutsideClick))
     <div v-if="isSignOutConfirmOpen" class="confirm-backdrop" @click.self="isSignOutConfirmOpen = false">
       <section class="confirm-dialog" role="dialog" aria-modal="true" aria-labelledby="signout-title">
         <h2 id="signout-title">Sign out?</h2>
-        <p>Your local solves will remain on this device.</p>
+        <p>Signing out keeps these solves on this device and stops cloud sync.</p>
         <div class="confirm-actions">
           <button class="account-button" @click="isSignOutConfirmOpen = false">Cancel</button>
           <button class="account-button danger-button" @click="emit('logout'); isSignOutConfirmOpen = false">Sign out</button>

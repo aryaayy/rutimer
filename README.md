@@ -22,14 +22,67 @@ The app works without Firebase and stores data in the browser. To enable account
 ```text
 rules_version = '2';
 service cloud.firestore {
-	match /databases/{database}/documents {
-		match /users/{userId}/solves/{solveId} {
-			allow read, write: if request.auth != null && request.auth.uid == userId;
-		}
-		match /users/{userId}/sessions/{sessionId} {
-			allow read, write: if request.auth != null && request.auth.uid == userId;
-		}
-	}
+  match /databases/{database}/documents {
+    function isOwner(userId) {
+      return request.auth != null && request.auth.uid == userId;
+    }
+
+    function isSafeId(value) {
+      return value.matches('^[A-Za-z0-9_-]{1,80}$');
+    }
+
+    function isValidSession() {
+      let data = request.resource.data;
+      return data.keys().hasOnly(['name', 'cubeType', 'updatedAt'])
+        && data.name is string
+        && data.name.size() > 0
+        && data.name.size() <= 80
+        && data.cubeType is string
+        && data.cubeType.size() > 0
+        && data.cubeType.size() <= 40
+        && data.updatedAt is number
+        && data.updatedAt >= 0;
+    }
+
+    function isValidSolve() {
+      let data = request.resource.data;
+      return data.keys().hasOnly(['time', 'scramble', 'comment', 'penalty', 'sessionId', 'createdAt', 'updatedAt'])
+        && data.time is number
+        && data.time >= 0
+        && data.time <= 31536000000
+        && data.scramble is string
+        && data.scramble.size() <= 20000
+        && data.comment is string
+        && data.comment.size() <= 2000
+        && data.penalty in ['none', '+2', 'DNF']
+        && data.sessionId is string
+        && isSafeId(data.sessionId)
+        && data.createdAt is number
+        && data.createdAt > 0
+        && data.updatedAt is number
+        && data.updatedAt > 0;
+    }
+
+    function isTombstone() {
+      let data = request.resource.data;
+      return data.keys().hasOnly(['deletedAt', 'updatedAt'])
+        && data.deletedAt is number
+        && data.deletedAt > 0
+        && data.updatedAt == data.deletedAt;
+    }
+
+    match /users/{userId}/solves/{solveId} {
+      allow read: if isOwner(userId);
+      allow create, update: if isOwner(userId) && isSafeId(solveId) && (isValidSolve() || isTombstone());
+      allow delete: if isOwner(userId);
+    }
+
+    match /users/{userId}/sessions/{sessionId} {
+      allow read: if isOwner(userId);
+      allow create, update: if isOwner(userId) && isSafeId(sessionId) && isValidSession();
+      allow delete: if isOwner(userId);
+    }
+  }
 }
 ```
 

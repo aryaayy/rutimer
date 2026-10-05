@@ -17,9 +17,6 @@ const timerResetKey = ref(0)
 const theme = ref<'light' | 'dark'>('light')
 const holdDurationSeconds = ref(0.3)
 const timerInputMode = ref<'spacebar' | 'typing'>('spacebar')
-const isCloudLoaded = ref(false)
-const cloudError = ref('')
-
 const { 
   sessions, 
   activeSessionId, 
@@ -29,13 +26,12 @@ const {
   updateSolvePenalty,
   updateComment,
   deleteSolve,
-  queueCloudDeletion,
   createSession,
   renameSession,
-  loadSessionMetadataFromCloud,
-  saveSessionMetadataToCloud,
-  loadSolvesFromCloud,
-  saveSolvesToCloud,
+  updateActiveCubeType,
+  syncAccount,
+  pushAccountChanges,
+  cloudSyncError,
   ao5, 
   ao12,
   ao100, 
@@ -45,19 +41,8 @@ const {
 
 const { user, isLoading: isAuthLoading, error: authError, isConfigured: isAuthConfigured, register, login, loginWithGoogle, logout } = useAuth()
 
-const lastAuthenticatedUserId = ref(localStorage.getItem('rutimer-last-user-id'))
-
-const syncAuthenticatedSolves = async () => {
-  if (!user.value || !isCloudLoaded.value) return
-
-  try {
-    cloudError.value = ''
-    await saveSolvesToCloud(user.value.uid)
-    await saveSessionMetadataToCloud(user.value.uid)
-  } catch (error) {
-    cloudError.value = getCloudErrorMessage(error, 'save')
-    console.error('Failed to save cloud solve data.', error)
-  }
+const syncAuthenticatedSolves = () => {
+  pushAccountChanges()
 }
 
 try {
@@ -90,35 +75,10 @@ watch([theme, holdDurationSeconds, timerInputMode], () => {
   }
 })
 
-watch(user, async currentUser => {
-  isCloudLoaded.value = false
-  cloudError.value = ''
-  if (!currentUser) return
-
-  const userId = currentUser.uid
-  lastAuthenticatedUserId.value = userId
-  localStorage.setItem('rutimer-last-user-id', userId)
-  try {
-    await loadSessionMetadataFromCloud(userId)
-    await loadSolvesFromCloud(userId)
-    if (user.value?.uid !== userId) return
-    isCloudLoaded.value = true
-    await syncAuthenticatedSolves()
-  } catch (error) {
-    cloudError.value = getCloudErrorMessage(error, 'load')
-    console.error('Failed to load cloud solve data.', error)
-  }
-})
-
-const getCloudErrorMessage = (error: unknown, operation: 'load' | 'save') => {
-  if (error && typeof error === 'object' && 'code' in error && error.code === 'permission-denied') {
-    return `Firestore denied the ${operation}. Deploy firestore.rules and verify the signed-in user.`
-  }
-
-  return operation === 'load'
-    ? 'Could not load cloud data. Check Firestore rules and your connection.'
-    : 'Could not upload cloud data. Check Firestore rules and your connection.'
-}
+watch(user, (currentUser, previousUser) => {
+  if ((currentUser?.uid ?? null) === (previousUser?.uid ?? null)) return
+  syncAccount(currentUser?.uid ?? null)
+}, { immediate: true })
 
 const updateCurrentScramble = (scramble: string) => {
   currentScramble.value = scramble
@@ -149,8 +109,8 @@ const onTimerPenaltyChanged = (penalty: Penalty) => {
 const handleCubeTypeChange = (newType: string) => {
   lastSolve.value = null
   timerResetKey.value++
-  activeSession.value.cubeType = newType
-  void syncAuthenticatedSolves()
+  updateActiveCubeType(newType)
+  syncAuthenticatedSolves()
 }
 
 const handleCreateSession = () => {
@@ -158,12 +118,12 @@ const handleCreateSession = () => {
   void syncAuthenticatedSolves()
 }
 
-const handleCommentUpdate = (payload: { id: number, comment: string }) => {
+const handleCommentUpdate = (payload: { id: string, comment: string }) => {
   updateComment(payload.id, payload.comment)
   void syncAuthenticatedSolves()
 }
 
-const handlePenaltyUpdate = (payload: { id: number, penalty: Penalty }) => {
+const handlePenaltyUpdate = (payload: { id: string, penalty: Penalty }) => {
   updateSolvePenalty(payload.id, payload.penalty)
   void syncAuthenticatedSolves()
 }
@@ -173,11 +133,9 @@ const handleRenameSession = (payload: { id: string, name: string }) => {
   void syncAuthenticatedSolves()
 }
 
-const handleDeleteSolve = (id: number) => {
+const handleDeleteSolve = (id: string) => {
   deleteSolve(id)
-  const userId = user.value?.uid || lastAuthenticatedUserId.value
-  if (userId) queueCloudDeletion(userId, id)
-  void syncAuthenticatedSolves()
+  syncAuthenticatedSolves()
   if (lastSolve.value?.id === id) {
     lastSolve.value = null
     timerResetKey.value++
@@ -246,7 +204,7 @@ const handleGoogleLogin = async () => {
           :auth-configured="isAuthConfigured"
           :auth-loading="isAuthLoading"
           :auth-error="authError"
-          :cloud-error="cloudError"
+          :cloud-error="cloudSyncError"
           @update:theme="theme = $event"
           @update:hold-duration-seconds="holdDurationSeconds = $event"
           @update:timer-input-mode="timerInputMode = $event"
